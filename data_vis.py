@@ -10,14 +10,13 @@ from datetime import datetime
 import argparse
 
 
-def cooccurence_mtrx_jaccard(ANN_PATH, class_list):
+def cooccurence_mtrx_jaccard(ANN_PATH):
 
     """
     Takes in path to XML annotations folder (containing all annotation files) and creates a co-occurence matrix of different classes using Jaccard Similarity:
 
     # Arguments
         ANN_PATH: path, annotation folder path
-        class_list: list, list of object classes
 
     # Returns
         df: pd.DataFrame, with items in 'class_list' as columns, in the form of one-hot encoding
@@ -26,14 +25,13 @@ def cooccurence_mtrx_jaccard(ANN_PATH, class_list):
 
     # get the file names from annotation folder
     allfiles = [f.parts[-1].split(".")[0] for f in Path(ANN_PATH).iterdir()]
-    columns = ["image_id"] + class_list
+    columns = ["image_id"]
 
     # dataframe for class co-occurence per image
     df = pd.DataFrame(columns=columns)
     df["image_id"] = allfiles
-    df = df.fillna(0)
     df.set_index("image_id", inplace=True)
-    df = df.astype(np.int32)
+
     # update the df with co-occurence information
     for ann in allfiles:
         tree = ET.parse(os.path.join(ANN_PATH, f"{ann}.xml"))
@@ -45,6 +43,8 @@ def cooccurence_mtrx_jaccard(ANN_PATH, class_list):
         # print(result)
         for name in result:
             df.loc[ann, name] = 1
+    df = df.fillna(0)
+    df = df.astype(np.int32)
 
     # create the co-occurence matrix
     coocc_df = df.T.dot(df)
@@ -153,16 +153,15 @@ def bounding_box_data(ANN_PATH):
     return df_bbox
 
 
-def create_save_vis(ANN_PATH, class_list):
+def create_save_vis(ANN_PATH):
     """
     Creates plots for dataset visualization based on files in XML annotations folder (containing all annotation files) and saves the visualization.
 
     # Arguments
         ANN_PATH: path, annotation folder path
-        class_list: list, list of object classes
 
     # Returns
-        image dataser visualization with 6 subplots (2 rows 3 columns):
+        image dataset visualization with 6 subplots (2 rows 3 columns):
         1. Class distribution of image dataset
         2. Normalized co-occurence matrix (Jaccard similarity)
         3. Histogram of image aspect ratio
@@ -171,14 +170,9 @@ def create_save_vis(ANN_PATH, class_list):
         6. Relative area (size) of bounding box to image (per class)
     """
 
-    df, coocc_norm = cooccurence_mtrx_jaccard(ANN_PATH, class_list)
+    df, coocc_norm = cooccurence_mtrx_jaccard(ANN_PATH)
     df_hist_AR = aspect_ratio_histogram(ANN_PATH)
     df_bndbox = bounding_box_data(ANN_PATH)
-
-    # getting class distribution count
-    class_sum = []
-    for col in df.columns:
-        class_sum.append(df[col].sum())
 
     # getting the mean area of bounding boxes per class
     df_bndbox_mean_area = df_bndbox.groupby("class")[["bbox_area"]].mean().reset_index()
@@ -211,8 +205,8 @@ def create_save_vis(ANN_PATH, class_list):
     columns = 3
 
     fig.add_subplot(rows, columns, 1)
-    plt.bar(df.columns, class_sum)
-    plt.title("Class Distribution")
+    plt.bar(df.columns, df.sum())
+    plt.title(f"Class Distribution- total {len(df)} images")
     plt.xlabel("class")
     plt.ylabel("count")
 
@@ -258,7 +252,7 @@ def create_save_vis(ANN_PATH, class_list):
         df_combined[df_combined["class"] == "handbag"]["fraction_area"],
         bins=80,
         edgecolor="none",
-        alpha=0.4,
+        alpha=0.5,
         color="green",
         label="handbag",
     )
@@ -266,7 +260,7 @@ def create_save_vis(ANN_PATH, class_list):
         df_combined[df_combined["class"] == "backpack"]["fraction_area"],
         bins=80,
         edgecolor="none",
-        alpha=0.2,
+        alpha=0.4,
         color="red",
         label="backpack",
     )
@@ -292,8 +286,13 @@ def create_save_vis(ANN_PATH, class_list):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--ann_path", type=str, default="./xml_ann", required=True)
-    parser.add_argument("--class_l", type=str, nargs="*", required=True)
+    parser.add_argument(
+        "--ann_path",
+        type=str,
+        default="./xml_ann",
+        required=True,
+        help="path to XML annotations folder",
+    )
     args = parser.parse_args()
 
-    create_save_vis(ANN_PATH=args.ann_path, class_list=args.class_l)
+    create_save_vis(ANN_PATH=args.ann_path)
