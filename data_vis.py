@@ -132,9 +132,8 @@ def bounding_box_data(ANN_PATH):
 
     # get the file name from annotation folder
     allfiles = [f.parts[-1].split(".")[0] for f in Path(ANN_PATH).iterdir()]
-    # dataframe for bounding box information
-    df_bbox = pd.DataFrame(columns=["image_id", "class", "bbox_area", "bbox_ar"])
 
+    data = []
     for img in allfiles:
         tree = ET.parse(os.path.join(ANN_PATH, f"{img}.xml"))
         root = tree.getroot()
@@ -148,7 +147,9 @@ def bounding_box_data(ANN_PATH):
                 bbox_w = xmax - xmin
                 bbox_h = ymax - ymin
                 values = [img, name, int(bbox_w * bbox_h), round(bbox_w / bbox_h, 2)]
-                df_bbox.loc[len(df_bbox), :] = values
+                data.append(values)
+
+    df_bbox = pd.DataFrame(data, columns=["image_id", "class", "bbox_area", "bbox_ar"])
 
     return df_bbox
 
