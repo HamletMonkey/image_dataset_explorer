@@ -79,21 +79,25 @@ def aspect_ratio_histogram(ANN_PATH):
         ANN_PATH: path, annotation folder path
 
     # Returns
-        df_imageAR: pd.DataFrame, with columns: 'image_id','width','height','img_aspect_ratio'
+        df_imageAR: pd.DataFrame, with columns: 'image_id','img_width','img_height','img_aspect_ratio'
             'image_id': str, filename from annotation
-            'width': int, image width
-            'height': int, image height
+            'img_width': int, image width
+            'img_height': int, image height
             'img_aspect_ratio': float, image aspect ratio, round up to 2 decimal points
     """
 
     # get the file name from annotation folder
     allfiles = [f.parts[-1].split(".")[0] for f in Path(ANN_PATH).iterdir()]
     df_imageAR = pd.DataFrame(
-        columns=["image_id", "width", "height", "img_aspect_ratio"]
+        columns=["image_id", "img_width", "img_height", "img_aspect_ratio"]
     )
     df_imageAR["image_id"] = allfiles
     # initialize with 0 value
-    df_imageAR["width"], df_imageAR["height"], df_imageAR["img_aspect_ratio"] = [
+    (
+        df_imageAR["img_width"],
+        df_imageAR["img_height"],
+        df_imageAR["img_aspect_ratio"],
+    ) = [
         0,
         0,
         0,
@@ -107,8 +111,8 @@ def aspect_ratio_histogram(ANN_PATH):
             w = int(object.find("width").text)
             h = int(object.find("height").text)
             ar = round(w / h, 2)
-            df_imageAR.loc[img, "width"] = w
-            df_imageAR.loc[img, "height"] = h
+            df_imageAR.loc[img, "img_width"] = w
+            df_imageAR.loc[img, "img_height"] = h
             df_imageAR.loc[img, "img_aspect_ratio"] = ar
 
     return df_imageAR
@@ -127,7 +131,7 @@ def bounding_box_data(ANN_PATH):
             'image_id': str, filename from annotation
             'class': str, bounding box class name
             'bbox_area': int, bounding box area
-            'bbox_ar': float, bounding box aspect ratio, round up to 2 decimal points
+            'bbox_aspect_ratio': float, bounding box aspect ratio, round up to 2 decimal points
     """
 
     # get the file name from annotation folder
@@ -149,7 +153,9 @@ def bounding_box_data(ANN_PATH):
                 values = [img, name, int(bbox_w * bbox_h), round(bbox_w / bbox_h, 2)]
                 data.append(values)
 
-    df_bbox = pd.DataFrame(data, columns=["image_id", "class", "bbox_area", "bbox_ar"])
+    df_bbox = pd.DataFrame(
+        data, columns=["image_id", "class", "bbox_area", "bbox_aspect_ratio"]
+    )
 
     return df_bbox
 
@@ -169,34 +175,37 @@ def create_save_vis(ANN_PATH):
         4. Mean area of bounding box per class
         5. Aspect ratio of bounding box in image dataset
         6. Relative area (size) of bounding box to image (per class)
+
+        df_bbox_comb: pd.DataFrame, with columns:
+            'image_id': str, filename from annotation
+            'class': str, bounding box class name
+            'bbox_area': int, bounding box area
+            'bbox_aspect_ratio': float, bounding box aspect ratio, round up to 2 decimal points
+            'img_width': int, image width
+            'img_height': int, image height
+            'img_aspect_ratio': float, image aspect ratio, round up to 2 decimal points
+            'img_area': int, area of image
+            'rel_area': float, relative area of bounding box to area of image
+            'rel_area_sqrt': float, square root of relative area
+
     """
 
     df, coocc_norm = cooccurence_mtrx_jaccard(ANN_PATH)
     df_hist_AR = aspect_ratio_histogram(ANN_PATH)
     df_bndbox = bounding_box_data(ANN_PATH)
 
+    df_hist_AR_ = df_hist_AR.reset_index()
+    cls_list = list(df.columns)
+
     # getting the mean area of bounding boxes per class
     df_bndbox_mean_area = df_bndbox.groupby("class")[["bbox_area"]].mean().reset_index()
     df_bndbox_mean_area.sort_values(by="bbox_area", ascending=False, inplace=True)
 
-    # getting the total area of bounding box - group by image and class
-    df_bndbox_total_area = (
-        df_bndbox.groupby(["image_id", "class"])[["bbox_area"]]
-        .sum()
-        .astype("int64")
-        .reset_index()
-    )
-    df_bndbox_total_area = df_bndbox_total_area.rename(
-        columns={"bbox_area": "total_bbox_area"}
-    )
-
-    # getting relative area of bounding box to image - group by class
-    df_hist_AR_ = df_hist_AR.reset_index()
-    df_combined = df_bndbox_total_area.merge(df_hist_AR_, on="image_id", how="left")
-    df_combined["img_area"] = df_combined["width"] * df_combined["height"]
-    df_combined["fraction_area"] = round(
-        df_combined["total_bbox_area"] / df_combined["img_area"], 2
-    )
+    # getting relative area
+    df_bbox_comb = df_bndbox.merge(df_hist_AR_, on="image_id", how="left")
+    df_bbox_comb["img_area"] = df_bbox_comb["img_width"] * df_bbox_comb["img_height"]
+    df_bbox_comb["rel_area"] = df_bbox_comb["bbox_area"] / df_bbox_comb["img_area"]
+    df_bbox_comb["rel_area_sqrt"] = np.sqrt(df_bbox_comb["rel_area"])
 
     # create plots!
     sns.set(font_scale=1.8)
@@ -208,8 +217,9 @@ def create_save_vis(ANN_PATH):
     fig.add_subplot(rows, columns, 1)
     plt.bar(df.columns, df.sum())
     plt.title(f"Class Distribution- total {len(df)} images")
-    plt.xlabel("class")
-    plt.ylabel("count")
+    plt.xlabel("class_name")
+    plt.xticks(rotation=45)
+    plt.ylabel("class_count")
 
     fig.add_subplot(rows, columns, 2)
     sns.heatmap(
@@ -226,63 +236,54 @@ def create_save_vis(ANN_PATH):
     plt.hist(df_hist_AR["img_aspect_ratio"], bins=100, range=[0, 5], edgecolor="none")
     plt.title("Histogram of Image Aspect Ratios")
     plt.xlabel("aspect_ratio")
-    plt.ylabel("count")
+    plt.ylabel("image_count")
 
     fig.add_subplot(rows, columns, 4)
     plt.bar(df_bndbox_mean_area["class"], df_bndbox_mean_area["bbox_area"])
     plt.title("Mean Area of Bounding Box per Class")
     plt.xlabel("class")
-    plt.ylabel("area")
+    plt.xticks(rotation=45)
+    plt.ylabel("mean_area")
 
     fig.add_subplot(rows, columns, 5)
-    plt.hist(df_bndbox["bbox_ar"], bins=800, edgecolor="none")
+    plt.hist(df_bndbox["bbox_aspect_ratio"], bins=650, edgecolor="none")
     plt.title("Aspect Ratio of Bounding Box in Dataset")
     plt.xlabel("ann_ar")
     plt.ylabel("count")
 
+    # 10 different colour for max 10 different classes
+    col_list = [
+        "powderblue",
+        "gold",
+        "tomato",
+        "limegreen",
+        "turquoise",
+        "plum",
+        "sandybrown",
+        "dodgerblue",
+        "silver",
+    ]
+
     fig.add_subplot(rows, columns, 6)
-    plt.hist(
-        df_combined[df_combined["class"] == "person"]["fraction_area"],
-        bins=80,
-        edgecolor="none",
-        alpha=0.2,
-        color="blue",
-        label="person",
-    )
-    plt.hist(
-        df_combined[df_combined["class"] == "handbag"]["fraction_area"],
-        bins=80,
-        edgecolor="none",
-        alpha=0.5,
-        color="green",
-        label="handbag",
-    )
-    plt.hist(
-        df_combined[df_combined["class"] == "backpack"]["fraction_area"],
-        bins=80,
-        edgecolor="none",
-        alpha=0.4,
-        color="red",
-        label="backpack",
-    )
-    plt.hist(
-        df_combined[df_combined["class"] == "luggage"]["fraction_area"],
-        bins=80,
-        edgecolor="none",
-        alpha=0.4,
-        color="yellow",
-        label="luggage",
-    )
+    for index, item in enumerate(cls_list):
+        plt.hist(
+            df_bbox_comb[df_bbox_comb["class"] == item]["rel_area_sqrt"],
+            bins=80,
+            edgecolor="none",
+            alpha=0.4,
+            color=col_list[index],
+            label=item,
+        )
     plt.title("Relative Area of Bounding Box to Image")
-    plt.xlabel("rel_area")
-    plt.ylabel("count")
+    plt.xlabel("rel_area_sqrt")
+    plt.ylabel("bbox_count")
     plt.legend()
 
     fig.tight_layout()
 
-    fig.savefig(
-        f'bags_dataset_visualisation-{datetime.today().strftime("%Y-%m-%d")}.png'
-    )
+    fig.savefig(f'dataset_visualisation-{datetime.today().strftime("%Y-%m-%d")}.png')
+
+    return df_bbox_comb
 
 
 if __name__ == "__main__":
@@ -290,7 +291,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "--ann_path",
         type=str,
-        default="./xml_ann",
         required=True,
         help="path to XML annotations folder",
     )
