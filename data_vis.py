@@ -21,6 +21,7 @@ def cooccurence_mtrx_jaccard(ANN_PATH):
     # Returns
         df: pd.DataFrame, with items in 'class_list' as columns, in the form of one-hot encoding
         coocc_norm: pd.DataFrame, Jaccard Similarity co-occurence matrix
+        class_list: list, list of class in dataset
     """
 
     # get the file names from annotation folder
@@ -46,6 +47,9 @@ def cooccurence_mtrx_jaccard(ANN_PATH):
     df = df.fillna(0)
     df = df.astype(np.int32)
 
+    # list of class
+    class_list = list(df.columns)
+
     # create the co-occurence matrix
     coocc_df = df.T.dot(df)
     # total images in a class
@@ -66,7 +70,7 @@ def cooccurence_mtrx_jaccard(ANN_PATH):
                     2,
                 )
 
-    return df, coocc_norm
+    return df, coocc_norm, class_list
 
 
 def aspect_ratio_histogram(ANN_PATH):
@@ -150,8 +154,17 @@ def bounding_box_data(ANN_PATH):
                 ymax = int(value.find("ymax").text)
                 bbox_w = xmax - xmin
                 bbox_h = ymax - ymin
-                values = [img, name, int(bbox_w * bbox_h), round(bbox_w / bbox_h, 2)]
-                data.append(values)
+                bbox_area = int(bbox_w * bbox_h)
+                try:
+                    bbox_aspect_ratio = round(bbox_w / bbox_h, 2)
+                    values = [img, name, bbox_area, bbox_aspect_ratio]
+                    data.append(values)
+                except ZeroDivisionError:
+                    # for extremely small bounding box, return the image id
+                    print(
+                        f'WARNING! \nimage_id "{img}" contains bounding box of height equals to zero: class--{name}, bounding box coordinates--{[xmin, ymin, xmax, ymax]}'
+                    )
+                    pass
 
     df_bbox = pd.DataFrame(
         data, columns=["image_id", "class", "bbox_area", "bbox_aspect_ratio"]
@@ -160,12 +173,13 @@ def bounding_box_data(ANN_PATH):
     return df_bbox
 
 
-def create_save_vis(ANN_PATH):
+def create_save_vis(ANN_PATH, title=None):
     """
     Creates plots for dataset visualization based on files in XML annotations folder (containing all annotation files) and saves the visualization.
 
     # Arguments
         ANN_PATH: path, annotation folder path
+        title: str, visualization plot main title, default=None
 
     # Returns
         image dataset visualization with 6 subplots (2 rows 3 columns):
@@ -190,12 +204,11 @@ def create_save_vis(ANN_PATH):
 
     """
 
-    df, coocc_norm = cooccurence_mtrx_jaccard(ANN_PATH)
+    df, coocc_norm, _ = cooccurence_mtrx_jaccard(ANN_PATH)
     df_hist_AR = aspect_ratio_histogram(ANN_PATH)
     df_bndbox = bounding_box_data(ANN_PATH)
 
     df_hist_AR_ = df_hist_AR.reset_index()
-    cls_list = list(df.columns)
 
     # getting the mean area of bounding boxes per class
     df_bndbox_mean_area = df_bndbox.groupby("class")[["bbox_area"]].mean().reset_index()
@@ -210,12 +223,16 @@ def create_save_vis(ANN_PATH):
     # create plots!
     sns.set(font_scale=1.8)
     fig = plt.figure(figsize=(30, 18))
+    # figure main title
+    if title != None:
+        fig.suptitle(f'{title} -- as of {datetime.today().strftime("%Y-%m-%d")}')
     # setting values to rows and column variables
     rows = 2
     columns = 3
 
     fig.add_subplot(rows, columns, 1)
-    plt.bar(df.columns, df.sum())
+    sorted_df = df.sum().sort_values(ascending=False)
+    plt.bar(sorted_df.index, sorted_df.values)
     plt.title(f"Class Distribution- total {len(df)} images")
     plt.xlabel("class_name")
     plt.xticks(rotation=45)
@@ -248,24 +265,24 @@ def create_save_vis(ANN_PATH):
     fig.add_subplot(rows, columns, 5)
     plt.hist(df_bndbox["bbox_aspect_ratio"], bins=650, edgecolor="none")
     plt.title("Aspect Ratio of Bounding Box in Dataset")
-    plt.xlabel("ann_ar")
+    plt.xlabel("bbox_ar")
     plt.ylabel("count")
 
     # 10 different colour for max 10 different classes
     col_list = [
-        "powderblue",
+        "dodgerblue",
         "gold",
         "tomato",
         "limegreen",
         "turquoise",
         "plum",
         "sandybrown",
-        "dodgerblue",
+        "powderblue",
         "silver",
     ]
 
     fig.add_subplot(rows, columns, 6)
-    for index, item in enumerate(cls_list):
+    for index, item in enumerate(sorted_df.index):
         plt.hist(
             df_bbox_comb[df_bbox_comb["class"] == item]["rel_area_sqrt"],
             bins=80,
@@ -280,8 +297,11 @@ def create_save_vis(ANN_PATH):
     plt.legend()
 
     fig.tight_layout()
-
-    fig.savefig(f'dataset_visualisation-{datetime.today().strftime("%Y-%m-%d")}.png')
+    print("saving visualization plot..")
+    fig.savefig(
+        f'dataset_visualisation-{datetime.now().strftime("%Y_%m_%d_%H-%M-%S")}.png'
+    )
+    print("visualization plot saved!")
 
     return df_bbox_comb
 
@@ -294,6 +314,12 @@ if __name__ == "__main__":
         required=True,
         help="path to XML annotations folder",
     )
+    parser.add_argument(
+        "--title",
+        type=str,
+        default=None,
+        help="main title of visualization plot",
+    )
     args = parser.parse_args()
 
-    create_save_vis(ANN_PATH=args.ann_path)
+    create_save_vis(ANN_PATH=args.ann_path, title=args.title)

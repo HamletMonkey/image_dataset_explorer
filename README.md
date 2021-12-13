@@ -13,4 +13,7 @@ The result returned is an image with 6 subplots (2 rows 3 columns) containing:
 Run main python file in terminal:
 `python data_vis.py --ann_path ./path/to/annotations`
 
+To add in main title for the visualization plot, eg.'Raw Dataset':
+`python data_vis.py --ann_path ./path/to/annotations --title 'Raw Dataset'`
+
 The result image will be saved in working directory.
