@@ -4,9 +4,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from datetime import datetime
 import argparse
-from df_vis.coocc_mtrx_jaccard import cooccurence_mtrx_jaccard
-from df_vis.img_ar_hist import aspect_ratio_histogram
-from df_vis.bbox_data import bounding_box_data
+from df_vis import *
 
 
 def create_save_vis(ANN_PATH, title=None):
