@@ -5,12 +5,13 @@ import numpy as np
 import pandas as pd
 from itertools import combinations
 import matplotlib.pyplot as plt
-from tqdm import tqdm
 
 # original function to calculate iou score between detection and groundtruth
 def score_iou(det_bbox, gt_bbox):
-    """Compute IoU between a single bboxes
-    Args:
+    """
+    Compute IoU between a single bboxes
+
+    Arguments:
         det_bbox (ndarray): detection bbox in xyxy format
         gt_bbox (ndarray): ground truth bbox in xyxy format format
     Returns:
@@ -35,24 +36,42 @@ def score_iou(det_bbox, gt_bbox):
 
 
 def iou_score_plot(XML_PATH):
+    """
+    Visualizing the IoU score for bounding boxes pair in images, to find out possible overlapping of annotations on same object.
+
+    # Arguments
+        XML_PATH: path, annotation folder path
+
+    # Returns
+        df_sort: pd.DataFrame, with columns: 'image_id','bbox_coord_pair','bbox_class_pair','iou_score'
+            'image_id': str, filename from annotation
+            'bbox_coord_pair': list, pair of bounding box coordinations (xmin, ymmin, xmax, ymax)
+            'bbox_class_pair': list, pair of object class corresponding to the coordinations
+            'iou_score': float, IoU score for corresponding pair of bounding box coordinations
+    """
+
     raw_xml = [f.parts[-1].split(".")[0] for f in Path(XML_PATH).iterdir()]
     print(f"Number of XML files: {len(raw_xml)}")
 
     # dictionary to store iamge_id with its diff bounding box combinations:
     raw_d = {}
-    for item in tqdm(raw_xml):  # read the xml file
+    for item in raw_xml:  # read the xml file
         result = []
-        tree = ET.parse(os.path.join("human_pics_annotations", f"{item}.xml"))
+        tree = ET.parse(os.path.join(XML_PATH, f"{item}.xml"))
         root = tree.getroot()
         for object in root.findall("object"):
+            # including the class name as well
+            name = object.find("name").text
             ymin = int(object.find("bndbox/ymin").text)
             xmin = int(object.find("bndbox/xmin").text)
             ymax = int(object.find("bndbox/ymax").text)
             xmax = int(object.find("bndbox/xmax").text)
-            result.append([xmin, ymin, xmax, ymax])
+            result.append([name, xmin, ymin, xmax, ymax])
         # only take images with more than one bounding box
         if len(result) > 1:
             raw_d[item] = [x for x in combinations(result, 2)]
+
+    print(f"Number of images with more than 1 bounding box: {len(raw_d)}")
 
     # dictionary to store image_id with IoU score of its diff bounding box combinations
     iou_score_d = {}
@@ -60,13 +79,13 @@ def iou_score_plot(XML_PATH):
         score_list = []
         for item in v:
             x, y = item
-            score_list.append(score_iou(x, y))
+            score_list.append(score_iou(x[1:], y[1:]))
             iou_score_d[k] = score_list
 
     # creating dataframe from raw_d and iou_score_d
     df_coord = pd.DataFrame(
-        list(raw_d.items()), columns=["image_id", "bbox_coordinations_pairs"]
-    ).explode("bbox_coordinations_pairs")
+        list(raw_d.items()), columns=["image_id", "bbox_coord_pair"]
+    ).explode("bbox_coord_pair")
     df_iou = pd.DataFrame(
         list(iou_score_d.items()), columns=["image_id", "iou_score"]
     ).explode("iou_score")
@@ -76,12 +95,19 @@ def iou_score_plot(XML_PATH):
         df_iou["image_id"]
     ), "image_id of both dataframes does not match!"
     df = pd.concat([df_coord, df_iou["iou_score"]], axis=1)
+    df["iou_score"] = df["iou_score"].astype("float32")
+
+    # extracting the class pair
+    df["bbox_class_pair"] = df["bbox_coord_pair"].apply(lambda x: [x[0][0], x[1][0]])
+    df["bbox_coord_pair"] = df["bbox_coord_pair"].apply(lambda x: [x[0][1:], x[1][1:]])
+    df = df[["image_id", "bbox_coord_pair", "bbox_class_pair", "iou_score"]]
 
     # for bounding box pair with IoU score > 0
-    df1 = df.sort_values(
+    df_sort = df.sort_values(
         by=["iou_score", "image_id"], ascending=[False, True], ignore_index=True
     )
-    df_sort_largethan_0 = df1[df1["iou_score"] > 0]
+    df_sort_largethan_0 = df_sort[df_sort["iou_score"] > 0]
+
     # for maximum score of IoU per image
     df_max_score = (
         df.groupby(["image_id"])[["iou_score"]]
@@ -113,3 +139,14 @@ def iou_score_plot(XML_PATH):
 
     fig.tight_layout()
     plt.show()
+
+    return df_sort
+
+
+def iou_inter_coord(first_bbox, second_bbox):
+    ixmin = np.maximum(second_bbox[0], first_bbox[0])
+    iymin = np.maximum(second_bbox[1], first_bbox[1])
+    ixmax = np.minimum(second_bbox[2], first_bbox[2])
+    iymax = np.minimum(second_bbox[3], first_bbox[3])
+    result = [ixmin, iymin, ixmax, iymax]
+    return result
