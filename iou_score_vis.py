@@ -5,11 +5,12 @@ import numpy as np
 import pandas as pd
 from itertools import combinations
 import matplotlib.pyplot as plt
+import argparse
 
 # original function to calculate iou score between detection and groundtruth
 def score_iou(det_bbox, gt_bbox):
     """
-    Compute IoU between a single bboxes
+    Compute IoU between pair of bboxes
 
     Arguments:
         det_bbox (ndarray): detection bbox in xyxy format
@@ -31,16 +32,16 @@ def score_iou(det_bbox, gt_bbox):
         + (gt_bbox[2] - gt_bbox[0] + 1.0) * (gt_bbox[3] - gt_bbox[1] + 1.0)
         - inters
     )
-
     return inters / uni
 
 
-def iou_score_plot(XML_PATH):
+def iou_score_plot(XML_PATH, plot=True):
     """
     Visualizing the IoU score for bounding boxes pair in images, to find out possible overlapping of annotations on same object.
 
     # Arguments
         XML_PATH: path, annotation folder path
+        plot: boolean, default=True, to display IoU score plot
 
     # Returns
         df_sort: pd.DataFrame, with columns: 'image_id','bbox_coord_pair','bbox_class_pair','iou_score'
@@ -106,40 +107,43 @@ def iou_score_plot(XML_PATH):
     df_sort = df.sort_values(
         by=["iou_score", "image_id"], ascending=[False, True], ignore_index=True
     )
-    df_sort_largethan_0 = df_sort[df_sort["iou_score"] > 0]
 
-    # for maximum score of IoU per image
-    df_max_score = (
-        df.groupby(["image_id"])[["iou_score"]]
-        .max()
-        .sort_values(by=["iou_score"], ascending=False)
-        .reset_index()
-    )
+    if plot:
+        df_sort_largethan_0 = df_sort[df_sort["iou_score"] > 0]
 
-    # plotting bar plot
-    fig, ax = plt.subplots(1, 2, figsize=(18, 7))
+        # for maximum score of IoU per image
+        df_max_score = (
+            df.groupby(["image_id"])[["iou_score"]]
+            .max()
+            .sort_values(by=["iou_score"], ascending=False)
+            .reset_index()
+        )
 
-    ax[0].bar(
-        df_sort_largethan_0.index, df_sort_largethan_0["iou_score"], edgecolor=None
-    )
-    ax[0].set_yticks(np.arange(0, 1, 0.05))
-    ax[0].set_title(f"IoU Score per bounding boxes pair -- greater than 0", fontsize=14)
-    ax[0].set_xlabel("bbox_pair", fontsize=12)
-    ax[0].set_ylabel("iou_score", fontsize=12)
-    ax[0].grid(True)
+        # plotting bar plot
+        fig, ax = plt.subplots(1, 2, figsize=(18, 7))
 
-    ax[1].bar(df_max_score.index, df_max_score["iou_score"], edgecolor=None)
-    ax[1].set_yticks(np.arange(0, 1, 0.05))
-    ax[1].set_title(
-        f"Max IoU score per image - total {len(df_max_score)} images", fontsize=14
-    )
-    ax[1].set_xlabel("image_index", fontsize=12)
-    ax[1].set_ylabel("max_iou_score", fontsize=12)
-    ax[1].grid(True)
+        ax[0].bar(
+            df_sort_largethan_0.index, df_sort_largethan_0["iou_score"], edgecolor=None
+        )
+        ax[0].set_yticks(np.arange(0, 1, 0.05))
+        ax[0].set_title(
+            f"IoU Score per bounding boxes pair -- greater than 0", fontsize=14
+        )
+        ax[0].set_xlabel("bbox_pair", fontsize=12)
+        ax[0].set_ylabel("iou_score", fontsize=12)
+        ax[0].grid(True)
 
-    fig.tight_layout()
-    plt.show()
+        ax[1].bar(df_max_score.index, df_max_score["iou_score"], edgecolor=None)
+        ax[1].set_yticks(np.arange(0, 1, 0.05))
+        ax[1].set_title(
+            f"Max IoU score per image - total {len(df_max_score)} images", fontsize=14
+        )
+        ax[1].set_xlabel("image_index", fontsize=12)
+        ax[1].set_ylabel("max_iou_score", fontsize=12)
+        ax[1].grid(True)
 
+        fig.tight_layout()
+        plt.show()
     return df_sort
 
 
@@ -150,3 +154,28 @@ def iou_inter_coord(first_bbox, second_bbox):
     iymax = np.minimum(second_bbox[3], first_bbox[3])
     result = [ixmin, iymin, ixmax, iymax]
     return result
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--xmlpath",
+        type=str,
+        required=True,
+        help="path to XML annotations folder",
+    )
+    parser.add_argument(
+        "-p",
+        type=bool,
+        default=True,
+        help="to plot the iou score of bounding boxes for visualization",
+    )
+
+    args = parser.parse_args()
+
+    df_iou = iou_score_plot(
+        XML_PATH=args.xmlpath,
+        plot=args.p,
+    )
+    df_iou.to_csv("iou_score.csv")
+    print("iou_score.csv saved.")
