@@ -18,7 +18,7 @@ Run `data_vis.py` in terminal:
 To add in main title for the visualization plot, eg.'Raw Dataset':
 `python data_vis.py --ann_path ./path/to/annotations --title 'Raw Dataset'`
 
-The result image will be saved in working directory.s
+The result image will be saved in working directory.
 
 ## IoU: Duplicate Annotations Check
 `iou_score_vis.py` - To visualize and gets the IoU score between different combination pair of bounding boxes within an image. A high IoU score indicates potential annotation duplication of the same object, especially if both labels are of the same class.
